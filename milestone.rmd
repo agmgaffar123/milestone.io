@@ -1,0 +1,102 @@
+# Peer-graded Assignment: Milestone Report
+**Mohamed Irshad**
+**04th May 2020**
+
+##Synopsis
+This report provides a short overview of the exploratory analysis of the text data to be used for the Capstone project for the Data Science Specialization along with a description of plans for the word prediction algorithm.
+
+##Data loading and analysis
+
+```{r}
+list.of.packages <- c("stringi", "tm", "wordcloud", "RColorBrewer")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages, repos="http://cran.rstudio.com/")
+library(dplyr)
+```
+
+```{r}
+library(ggplot2)
+library(stringi)
+```
+
+```{r}
+fileUrl <-"https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip"
+if (!file.exists("Coursera-SwiftKey.zip")){
+  download.file(fileUrl, destfile = "Coursera-SwiftKey.zip")
+}
+unzip("Coursera-SwiftKey.zip")
+```
+
+
+###Summary of the data
+```{r}
+file.list = c("final/en_US/en_US.blogs.txt", "final/en_US/en_US.news.txt", "final/en_US/en_US.twitter.txt")
+text <- list(blogs = "", news = "", twitter = "")
+
+data.summary <- matrix(0, nrow = 3, ncol = 3, dimnames = list(c("blogs", "news", "twitter"),c("file size, Mb", "lines", "words")))
+for (i in 1:3) {
+  con <- file(file.list[i], "rb")
+  text[[i]] <- readLines(con, encoding = "UTF-8",skipNul = TRUE)
+  close(con)
+  data.summary[i,1] <- round(file.info(file.list[i])$size / 1024^2, 2)
+  data.summary[i,2] <- length(text[[i]])
+  data.summary[i,3] <- sum(stri_count_words(text[[i]]))
+}
+
+```
+
+###The data is summarized in the table below.
+
+```{r}
+library(knitr)
+kable(data.summary)
+```
+
+These datasets are rather large, and since the goal is to provide a proof of concept for the data analysis, for the remainder of the report we will sample a smaller fraction of the data (1 %) to perform the analysis. The three parts will be combine into a single file and used to generate the corpus.
+
+```{r}
+set.seed(123)
+blogs_sample <- sample(text$blogs, 0.01*length(text$blogs))
+news_sample <- sample(text$news, 0.01*length(text$news))
+twitter_sample <- sample(text$twitter, 0.01*length(text$twitter))
+sampled_data <- c(blogs_sample, news_sample, twitter_sample)
+sum <- sum(stri_count_words(sampled_data))
+```
+
+##Build the corpus
+
+```{r}
+library(tm)
+library(wordcloud)
+library(RColorBrewer)
+# remove emoticons
+sampled_data <- iconv(sampled_data, 'UTF-8', 'ASCII')
+corpus <- Corpus(VectorSource(as.data.frame(sampled_data, stringsAsFactors = FALSE))) 
+corpus <- corpus %>%
+  tm_map(tolower) %>%  
+  tm_map(PlainTextDocument) %>%
+  tm_map(removePunctuation) %>%
+  tm_map(removeNumbers) %>%
+  tm_map(stripWhitespace)
+```
+
+```{r}
+term.doc.matrix <- TermDocumentMatrix(corpus)
+term.doc.matrix <- as.matrix(term.doc.matrix)
+word.freqs <- sort(rowSums(term.doc.matrix), decreasing=TRUE) 
+dm <- data.frame(word=names(word.freqs), freq=word.freqs)
+```
+
+##Word cloud plot of the most common words in the corpus
+
+```{r}
+wordcloud(dm$word, dm$freq, min.freq= 500, random.order=TRUE, rot.per=.25, colors=brewer.pal(8, "Dark2"))
+```
+
+
+
+###Summary
+1.the data sets are pretty big and processing them requires time and computing resources;
+2.most of the top ranking n-grams contains English stop words
+3.using the n-grams we can conceive a crude algorithm to suggest the next words in a text editor; For example, the probability of an untyped word can be estimated from the frequencies in the corpus of the n-grams containing that word in the last position conditioned on the presence the last typed word(s) as the first n - 1 words in the n-gram. One can use a weighted sum of frequencies, with the weights calculated using machine learning.
+4.use a pre-built R algorithm, like one based on Hidden Markov model and the n-grams calculated from the data sets provided in this class.
